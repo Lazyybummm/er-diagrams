@@ -1,11 +1,18 @@
+
 import { useRef } from "react";
+
 
 let attr_count = 0;
 const rx = 20;
 const ry = 20;
-let offset = 0;
 
-const ModalInput = ({ setcol, x_ref, y_ref, table_id, setactive }) => {
+const offsets=[{}];
+function sync(table_id){
+    const res=offsets.find((s)=>{s.tidd==table_id})
+    return res.gap;
+
+}
+const ModalInput = ({ setcol, x_ref, y_ref, table_id, setactive,wsref,offsetref }) => {
   const input1ref = useRef(null);
   const input2ref = useRef(null);
 
@@ -60,19 +67,24 @@ const ModalInput = ({ setcol, x_ref, y_ref, table_id, setactive }) => {
         </select>
         <button
           onClick={() => {
-            offset = offset + 2 * ry +10;
             setactive(null);
-            setcol((prev) => [
+            wsref.current.send(JSON.stringify({type:'offset-request',id:table_id.current}))
+            setcol((prev) => {
+               const next= [
               ...prev,
-              {
+              { type:'attribute',
                 id: "a" + attr_count++,
                 title: input1ref.current.value,
                 type: input2ref.current.value,
                 cx: x_ref.current,
-                cy: y_ref.current + offset,
+                cy: y_ref.current + offsetref.current,
                 t_id: table_id.current,
               },
-            ]);
+            ]
+           
+            wsref.current.send(JSON.stringify({type:"attribute",payload:next}))
+            return next;
+          });
           }}
         >
           CREATE ATTRIBUTE

@@ -1,20 +1,50 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SvgDropdown from "../../comps/drop";
 import tablespec from "../../utils";
 import ModalInput from "../../comps/addattr";
 import Apply from "../../comps/apply";
-
 let table_count = 0;
 
 function App() {
+  
+  const wsref =useRef(null);
+  const dragref=useRef();
+  const offsetref=useRef()
   const [active, setactive] = useState(null);
   const table_id = useRef();
   const [shape, setshape] = useState([]);
   const [col, setcol] = useState([]);
   const x_ref = useRef(null);
   const y_ref = useRef(null);
+  const dragid=useRef()
+  useEffect(()=>{
+    const ws=new WebSocket("ws://localhost:8080")
+    wsref.current=ws;
+
+    ws.onmessage=(msg)=>{
+      const parsed=JSON.parse(msg.data);
+      console.log(parsed.y);
+      if(parsed.type=='table'){
+        setshape(parsed.payload);
+      }
+      else if(parsed.type=='offset'){
+        offsetref.current=parsed.payload;
+      }
+      else{
+        setcol(parsed.payload);
+      }
+    }
+  },[])
 
   const colors = ["#6C63FF", "#FF6584", "#4CAF50", "#2196F3", "#FFC107"];
+
+  async function offset(dragref,x,y,clientx,clienty){
+    console.log("inside mousedown");
+    dragref.current={
+        x:clientx-x,
+        y:clienty-y
+    }
+}
 
   return (
     <div
@@ -43,19 +73,21 @@ function App() {
           const name = prompt("Enter table name:");
           if (!name) return;
           const color = colors[table_count % colors.length];
-          setshape((prev) => [
-            ...prev,
-            {
-              type: "table",
+          setshape((prev) => {
+            const next=[
+               ...prev,
+              {type: "table",
               fill: color,
               id: "t" + table_count++,
               height: 200,
               width: 200,
               x: 80,
               y: 80 + prev.length * 240,
-              name,
-            },
-          ]);
+              name}
+            ]
+            wsref.current.send(JSON.stringify({type:"table",payload:next}));
+            return next;
+        });
         }}
       >
         + Add Table
@@ -112,9 +144,24 @@ function App() {
           <g key={index}>
             <rect
               onMouseDown={async (e) => {
+                dragid.current=e.target.id;
                 await tablespec(e.target.id, shape, x_ref, y_ref);
+                console.log(e.target.x.baseVal.value)
+                await offset(dragref,e.target.x.baseVal.value,e.target.y.baseVal.value,e.clientX,e.clientY)
                 table_id.current = e.target.id;
+                console.log(dragref.current.x);
                 setactive("dropdown");
+              }}
+              onMouseMove={(e)=>{
+                console.log('mouse-x'+e.clientX)
+                console.log(dragref.current.x,dragref.current.y)
+               setshape(prev=>prev.map(s=>s.id==dragid.current?{...s,x:e.clientX-dragref.current.x,y:e.clientY-dragref.current.y}:s))
+              }}
+
+              onMouseUp={(e)=>{
+                setshape(prev=>prev.map(s=>s.id==dragid.current?{...s,x:e.clientX-dragref.current.x,y:e.clientY-dragref.current.y}:s))
+                dragid.current=null;
+                
               }}
               fill={item.fill}
               x={item.x}
@@ -131,7 +178,7 @@ function App() {
                 cursor: "pointer",
               }}
             ></rect>
-            <text
+            {/* <text
               x={item.x + item.width / 2}
               y={item.y + 28}
               fill="white"
@@ -141,7 +188,7 @@ function App() {
               style={{ pointerEvents: "none" }}
             >
               {item.name}
-            </text>
+            </text> */}
           </g>
         ))}
 
@@ -188,6 +235,8 @@ function App() {
 
       {active === "Modal" && (
         <ModalInput
+        wsref={wsref}
+        offsetref={offsetref}
           setcol={setcol}
           table_id={table_id}
           x_ref={x_ref}
