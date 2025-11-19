@@ -1,50 +1,37 @@
 import { useEffect, useRef, useState } from "react";
-import SvgDropdown from "../../comps/drop";
+import SvgDropdown from "./comps/drop";
+import ModalInput from "./comps/addattr";
+import Rename from "./comps/rename";
+import Landing from "./comps/landing";
+import Apply from "./comps/apply";
 import tablespec from "../../utils";
-import ModalInput from "../../comps/addattr";
-import Apply from "../../comps/apply";
+
 let table_count = 0;
 
 function App() {
-  
-  const wsref =useRef(null);
-  const dragref=useRef();
-  const offsetref=useRef()
-  const [active, setactive] = useState(null);
+  const tableQueriesRef = useRef({});
+  const nameref = useRef();
+  const dragref = useRef();
+  const offsetref = useRef({});
   const table_id = useRef();
   const [shape, setshape] = useState([]);
   const [col, setcol] = useState([]);
   const x_ref = useRef(null);
   const y_ref = useRef(null);
-  const dragid=useRef()
-  useEffect(()=>{
-    const ws=new WebSocket("ws://localhost:8080")
-    wsref.current=ws;
+  const dragid = useRef();
 
-    ws.onmessage=(msg)=>{
-      const parsed=JSON.parse(msg.data);
-      console.log(parsed.y);
-      if(parsed.type=='table'){
-        setshape(parsed.payload);
-      }
-      else if(parsed.type=='offset'){
-        offsetref.current=parsed.payload;
-      }
-      else{
-        setcol(parsed.payload);
-      }
-    }
-  },[])
+  const [active, setactive] = useState("landing");
+  const [selectid,setSelectedId]=useState(null);
+  const idref=useRef(null); // <-- new state for selected table ID
 
   const colors = ["#6C63FF", "#FF6584", "#4CAF50", "#2196F3", "#FFC107"];
 
-  async function offset(dragref,x,y,clientx,clienty){
-    console.log("inside mousedown");
-    dragref.current={
-        x:clientx-x,
-        y:clienty-y
-    }
-}
+  async function offset(dragref, x, y, clientx, clienty) {
+    dragref.current = {
+      x: clientx - x,
+      y: clienty - y,
+    };
+  }
 
   return (
     <div
@@ -57,41 +44,57 @@ function App() {
         padding: "10px",
       }}
     >
-      <button
-        style={{
-          background: "#6C63FF",
-          color: "white",
-          padding: "10px 16px",
-          border: "none",
-          borderRadius: "8px",
-          cursor: "pointer",
-          alignSelf: "flex-start",
-          fontWeight: "600",
-          boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
-        }}
-        onClick={() => {
-          const name = prompt("Enter table name:");
-          if (!name) return;
-          const color = colors[table_count % colors.length];
-          setshape((prev) => {
-            const next=[
-               ...prev,
-              {type: "table",
-              fill: color,
-              id: "t" + table_count++,
-              height: 200,
-              width: 200,
-              x: 80,
-              y: 80 + prev.length * 240,
-              name}
-            ]
-            wsref.current.send(JSON.stringify({type:"table",payload:next}));
-            return next;
-        });
-        }}
-      >
-        + Add Table
-      </button>
+      {active === "landing" && (
+        <Landing
+          setactive={setactive}
+          setshape={setshape}
+          setcol={setcol}
+          idref={idref}
+          nameref={nameref} // <-- pass setter
+        />
+      )}
+
+      {active !== "landing" && (
+        <button
+          style={{
+            background: "#6C63FF",
+            color: "white",
+            padding: "10px 16px",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+            alignSelf: "flex-start",
+            fontWeight: "600",
+            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+          }}
+          onClick={() => {
+            const name = prompt("Enter table name:");
+            if (!name) return;
+            const color = colors[table_count % colors.length];
+            const len = shape.length;
+            if (len) table_count = len;
+            const newTableId = "t" + table_count++;
+            setshape((prev) => [
+              ...prev,
+              {
+                type: "table",
+                fill: color,
+                id: newTableId,
+                height: 200,
+                width: 200,
+                x: 80,
+                y: 80 + prev.length * 240,
+                name,
+              },
+            ]);
+
+            // automatically select the new table
+            setSelectedId(newTableId);
+          }}
+        >
+          + Add Table
+        </button>
+      )}
 
       <svg
         height={1600}
@@ -110,32 +113,12 @@ function App() {
           >
             <polygon points="0 0, 10 3.5, 0 7" />
           </marker>
-          <pattern
-            id="smallGrid"
-            width="20"
-            height="20"
-            patternUnits="userSpaceOnUse"
-          >
-            <path
-              d="M 20 0 L 0 0 0 20"
-              fill="none"
-              stroke="#ddd"
-              strokeWidth="0.5"
-            />
+          <pattern id="smallGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#ddd" strokeWidth="0.5" />
           </pattern>
-          <pattern
-            id="grid"
-            width="100"
-            height="100"
-            patternUnits="userSpaceOnUse"
-          >
+          <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
             <rect width="100" height="100" fill="url(#smallGrid)" />
-            <path
-              d="M 100 0 L 0 0 0 100"
-              fill="none"
-              stroke="#ccc"
-              strokeWidth="1"
-            />
+            <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#ccc" strokeWidth="1" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#grid)" />
@@ -144,24 +127,18 @@ function App() {
           <g key={index}>
             <rect
               onMouseDown={async (e) => {
-                dragid.current=e.target.id;
+                dragid.current = e.target.id;
                 await tablespec(e.target.id, shape, x_ref, y_ref);
-                console.log(e.target.x.baseVal.value)
-                await offset(dragref,e.target.x.baseVal.value,e.target.y.baseVal.value,e.clientX,e.clientY)
+                await offset(
+                  dragref,
+                  e.target.x.baseVal.value,
+                  e.target.y.baseVal.value,
+                  e.clientX,
+                  e.clientY
+                );
                 table_id.current = e.target.id;
-                console.log(dragref.current.x);
+                setSelectedId(e.target.id); // <-- select table on click
                 setactive("dropdown");
-              }}
-              onMouseMove={(e)=>{
-                console.log('mouse-x'+e.clientX)
-                console.log(dragref.current.x,dragref.current.y)
-               setshape(prev=>prev.map(s=>s.id==dragid.current?{...s,x:e.clientX-dragref.current.x,y:e.clientY-dragref.current.y}:s))
-              }}
-
-              onMouseUp={(e)=>{
-                setshape(prev=>prev.map(s=>s.id==dragid.current?{...s,x:e.clientX-dragref.current.x,y:e.clientY-dragref.current.y}:s))
-                dragid.current=null;
-                
               }}
               fill={item.fill}
               x={item.x}
@@ -178,7 +155,7 @@ function App() {
                 cursor: "pointer",
               }}
             ></rect>
-            {/* <text
+            <text
               x={item.x + item.width / 2}
               y={item.y + 28}
               fill="white"
@@ -188,15 +165,17 @@ function App() {
               style={{ pointerEvents: "none" }}
             >
               {item.name}
-            </text> */}
+            </text>
           </g>
         ))}
 
         {active === "dropdown" && (
           <SvgDropdown
             setactive={setactive}
+            tableQueriesRef={tableQueriesRef}
             setshape={setshape}
-            options={["Add Attribute", "Delete Table", "Rename"]}
+            options={["Add Attribute", "Delete Table", "Rename", "Check Normalization"]}
+            table_id={table_id}
           />
         )}
 
@@ -235,16 +214,30 @@ function App() {
 
       {active === "Modal" && (
         <ModalInput
-        wsref={wsref}
-        offsetref={offsetref}
+          offsetref={offsetref}
           setcol={setcol}
           table_id={table_id}
           x_ref={x_ref}
           y_ref={y_ref}
           setactive={setactive}
+          col={col}
+          shape={shape}
         />
       )}
-      <Apply shape={shape} col={col}></Apply>
+
+      {active === "Rename" && (
+        <Rename setshape={setshape} setactive={setactive} table_id={table_id.current} />
+      )}
+
+      {active !== "landing" && (
+        <Apply
+          shape={shape}
+          col={col}
+          tableQueriesRef={tableQueriesRef}
+          idref={idref} // 
+          nameref={nameref}
+        />
+      )}
     </div>
   );
 }
